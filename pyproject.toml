@@ -1,0 +1,41 @@
+[project]
+name = "pytest-qemu-pic32mk"
+version = "0.1.0"
+description = "pytest plugin for QEMU-based functional tests targeting PIC32MK (MIPS32) firmware"
+authors = [
+    {name = "Ericson Joseph",email = "ejoseph@voltumotor.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pytest>=7.0",
+]
+
+[project.optional-dependencies]
+can = ["python-can>=4.0"]
+build = ["pymaketool"]
+
+[project.entry-points."pytest11"]
+qemu-pic32mk = "pytest_qemu_pic32mk.plugin"
+
+[tool.poetry]
+packages = [{include = "pytest_qemu_pic32mk", from = "src"}]
+include = [
+    {path = "src/pytest_qemu_pic32mk/wrapper/**/*", format = ["sdist", "wheel"]},
+    {path = "src/pytest_qemu_pic32mk/build_assets/**/*", format = ["sdist", "wheel"]},
+    {path = "src/pytest_qemu_pic32mk/_gdb_mips_expand.py", format = ["sdist", "wheel"]},
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+pytest = ">=7.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,84 @@
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+poetry.lock
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+htmlcov/
+.pytest_cache/
+
+# Pytest QEMU build artifacts
+.pytest-qemu-build/
+
+# VS Code settings
+.vscode/
+
+# MyPy
+.mypy_cache/
+dmypy.json
+dmypy-log.json
+
+# Pyre type checker
+.pyre/
+
+# Pyright type checker
+.pyright/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs
+.idea/
+.spyderproject
+.spyproject
+.ropeproject
+
+# Test output
+test-output/
+
+# Misc
+*.log
+*.tmp
+*.bak
+*.swp
+*~
