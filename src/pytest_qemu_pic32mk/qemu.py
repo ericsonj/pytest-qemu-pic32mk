@@ -25,6 +25,15 @@ DEFAULT_BMS_UART_SOCK = "/tmp/qemu-bms-uart.sock"
 DEFAULT_BMS_UART_SOCK_ISOLATED = "/tmp/qemu-bms-uart-isolated.sock"
 
 
+def _normalize_vcan_interfaces(
+    spec: "list[str | None] | dict[int, str]",
+) -> "dict[int, str]":
+    """Return {port_1indexed: iface_name}. List index 0 maps to CAN1."""
+    if isinstance(spec, dict):
+        return dict(spec)
+    return {i + 1: name for i, name in enumerate(spec) if name is not None}
+
+
 def _ensure_vcan(iface: str) -> None:
     result = subprocess.run(["ip", "link", "show", "dev", iface],
                             capture_output=True)
@@ -217,9 +226,8 @@ class QEMUProcess:
         qmp_sock: str = DEFAULT_QMP_SOCK,
         gdb_port: int = DEFAULT_GDB_PORT,
         bms_uart_sock: str = DEFAULT_BMS_UART_SOCK,
-        vcan_interfaces: Sequence[str] = (),
+        vcan_interfaces: "list[str | None] | dict[int, str]" = (),
         extra_args: Sequence[str] = (),
-        can_buses: "list[dict] | None" = None,
     ) -> "QEMUProcess":
         """Launch QEMU and wait until the QMP socket is ready.
 
@@ -239,15 +247,11 @@ class QEMUProcess:
             qmp_sock:         UNIX socket path for QMP.
             gdb_port:         TCP port for the GDB stub.
             bms_uart_sock:    UNIX socket path for UART1 (BMS mock).
-            vcan_interfaces:  SocketCAN interfaces to create/bring-up.
+            vcan_interfaces:  SocketCAN interfaces to create and wire to QEMU.
+                              List form maps sequentially from CAN1; dict form
+                              uses 1-indexed CANFD port numbers as keys.
             extra_args:       Extra raw arguments appended to QEMU command line.
-            can_buses:        List of CAN bus dicts, each with keys:
-                              ``{"bus_id": "canbus0", "iface": "vcan0"}``.
-                              If ``None``, no CAN buses are configured.
         """
-        for iface in vcan_interfaces:
-            _ensure_vcan(iface)
-
         _kill_existing(qmp_sock)
 
         for _sock in (qmp_sock, bms_uart_sock):
@@ -283,17 +287,23 @@ class QEMUProcess:
             "-S",
         ]
 
-        if can_buses:
-            for bus in can_buses:
-                bid = bus["bus_id"]
-                iface = bus["iface"]
+        if vcan_interfaces:
+            mapping = _normalize_vcan_interfaces(vcan_interfaces)
+            for port, iface in sorted(mapping.items()):
+                _ensure_vcan(iface)
+                bus_id = f"canbus{port - 1}"
+                host_id = f"canhost{port - 1}"
                 cmd += [
-                    "-object", f"can-bus,id={bid}",
-                    "-object", f"can-host-socketcan,id={bid.replace('bus', 'host')},if={iface},canbus={bid}",
+                    "-object", f"can-bus,id={bus_id}",
+                    "-object", (
+                        f"can-host-socketcan,id={host_id},"
+                        f"if={iface},canbus={bus_id}"
+                    ),
                 ]
 
         cmd += list(extra_args)
 
+        print(f"[QEMU] cmd: {' '.join(cmd)}", flush=True)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
                                 bufsize=1)

@@ -67,6 +67,7 @@ from .gpio import GPIOHelper
 from .gpio_tool import QMPClient
 from .gdb_snapshot import capture_snapshot
 from .qemu import QEMUProcess, QEMUStdio
+from .vscode import generate_vscode_debug_config
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -108,6 +109,25 @@ def _find_release_files(config: Pic32mkConfig, rootdir: Path) -> dict:
 
 
 # ── Plugin registration ───────────────────────────────────────────────────────
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    group = parser.getgroup("qemu-pic32mk")
+    group.addoption(
+        "--qemu-vscode-init",
+        action="store_true",
+        default=False,
+        help="Generate VSCode GDB debug config (.vscode/launch.json + tasks.json) and exit.",
+    )
+    group.addoption(
+        "--qemu-start-debug",
+        action="store_true",
+        default=False,
+        help=(
+            "Build firmware, start QEMU halted at reset, and wait for GDB. "
+            "Use with the generated VSCode 'QEMU Debug' launch config."
+        ),
+    )
+
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
@@ -152,6 +172,66 @@ def _pic32mk_build(
         Pic32mkConfig(build=False)   # use pre-built artifacts in release_dir
     """
     build_firmware(pic32mk_config, Path(str(request.config.rootdir)))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _qemu_vscode_init(
+    pic32mk_config: Pic32mkConfig,
+    _pic32mk_build: None,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Generate VSCode GDB debug config when ``--qemu-vscode-init`` is passed.
+
+    Writes/updates ``.vscode/launch.json`` and ``.vscode/tasks.json`` in the
+    project root, then exits pytest without running any tests.
+    """
+    if not request.config.getoption("--qemu-vscode-init", default=False):
+        return
+    generate_vscode_debug_config(pic32mk_config, Path(str(request.config.rootdir)))
+    pytest.exit("VSCode config written — no tests run.", returncode=0)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _qemu_start_debug(
+    pic32mk_config: Pic32mkConfig,
+    _pic32mk_build: None,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Start QEMU halted and wait for GDB when ``--qemu-start-debug`` is passed.
+
+    Builds firmware, launches QEMU with the CPU halted at the reset vector,
+    prints the GDB stub address, and blocks until Ctrl+C.  Use with the
+    generated VSCode ``"QEMU Debug"`` launch config.
+    """
+    if not request.config.getoption("--qemu-start-debug", default=False):
+        return
+    files = _find_release_files(pic32mk_config, Path(str(request.config.rootdir)))
+    proc = QEMUProcess.start(
+        **files,
+        qemu_bin=pic32mk_config.qemu_bin,
+        run=False,
+        qmp_sock=pic32mk_config.qmp_sock,
+        gdb_port=pic32mk_config.gdb_port,
+        bms_uart_sock=pic32mk_config.bms_uart_sock,
+        vcan_interfaces=pic32mk_config.vcan_interfaces,
+        extra_args=pic32mk_config.extra_qemu_args,
+    )
+    print(
+        f"\n[pytest-qemu-pic32mk] QEMU running — CPU halted at reset.\n"
+        f"  GDB stub : localhost:{pic32mk_config.gdb_port}\n"
+        f"  ELF      : {proc.elf}\n"
+        f"  In VSCode: Run → 'QEMU Debug — {pic32mk_config.project_name}'\n"
+        f"  Press Ctrl+C to stop QEMU.",
+        flush=True,
+    )
+    import signal as _signal
+    try:
+        _signal.pause()
+    except (KeyboardInterrupt, AttributeError):
+        pass
+    finally:
+        proc.kill()
+    pytest.exit("QEMU stopped.", returncode=0)
 
 
 @pytest.fixture(scope="session")

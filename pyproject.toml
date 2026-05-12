@@ -3,7 +3,7 @@ name = "pytest-qemu-pic32mk"
 version = "0.1.0"
 description = "pytest plugin for QEMU-based functional tests targeting PIC32MK (MIPS32) firmware"
 authors = [
-    {name = "Ericson Joseph",email = "ejoseph@voltumotor.com"}
+    {name = "Ericson Joseph",email = "ericsonjoseph@gmail.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.10"

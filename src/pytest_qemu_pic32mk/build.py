@@ -1,38 +1,24 @@
-"""Firmware build runner for pytest-qemu-pic32mk.
+"""Firmware build runner for pytest-qemu-pic32mk (workspace mode only).
 
-Invoked once per pytest session, before QEMU is launched.  Supports two modes:
+Invoked once per pytest session via the ``_pic32mk_build`` autouse fixture.
 
-**Workspace mode** (recommended for foreign projects):
-    Set ``Pic32mkConfig.project_src_dir`` to the foreign firmware source root.
-    The plugin creates a managed workspace at ``.pytest-qemu-build/``, symlinks
-    the firmware sources as ``TARGET/`` and the bundled wrapper as ``wrapper/``,
-    copies the bundled ``Makefile.py`` into ``pymake/``, then drives
-    ``pymaketool all`` and ``make -f pymake/makefile.mk all`` transparently.
-    No ``Makefile`` or pymaketool configuration is needed in the foreign project.
+Set ``Pic32mkConfig.project_src_dir`` to the firmware source root.  The plugin
+creates a managed workspace at ``.pytest-qemu-build/``, symlinks the sources as
+``TARGET/`` and the bundled wrapper as ``wrapper/``, copies the bundled
+``Makefile.py`` into ``pymake/``, then drives ``pymaketool all`` and
+``make -f pymake/makefile.mk all``.  No ``Makefile`` or pymaketool config is
+needed in the consumer project.
 
-**Custom build mode** (default when ``project_src_dir`` is ``None``):
-    Runs ``build_cmd`` (default: ``make``) in ``build_workspace``.
-    If the project contains a ``Makefile.py`` but ``pymake/makefile.mk`` has not
-    been generated yet, ``pymaketool`` is invoked automatically before
-    ``build_cmd`` — eliminating the ``make: pymake/makefile.mk: No such file``
-    error that occurs when ``make`` is called before pymaketool has run.
-
-In both modes, build output is streamed live to stdout so the user can see
-compiler warnings and errors directly in the pytest run.  A non-zero exit code
-raises ``pytest.fail`` immediately, aborting the session before any test starts.
-
-Typical workspace call chain
------------------------------
-::
+Call chain::
 
     pytest session starts
         → _pic32mk_build fixture (plugin.py)
             → build_firmware(config, rootdir)
                 → _build_workspace(config, rootdir)
-                    → _setup_workspace()  — creates dirs, copies scripts, symlinks
+                    → _setup_workspace()  — dirs, scripts, symlinks
                     → pymaketool all      — generates srcs.mk / vars.mk / targets.mk
-                    → make -f pymake/makefile.mk all  — compiles, links, extracts
-                    → config.release_dir = workspace/Release  (mutates for QEMU)
+                    → make -f pymake/makefile.mk all  — compile, link, extract
+                    → config.release_dir = workspace/Release
         → qemu_proc fixture starts QEMU with Release/*.boot.bin etc.
         → tests run
 """
@@ -199,6 +185,13 @@ def _build_workspace(config: Pic32mkConfig, rootdir: Path) -> None:
     # Redirect artifact discovery so qemu.py picks up the built binaries
     config.release_dir = workspace / "Release"
 
+    # Symlink compile_commands.json to workspace root so clangd can find it
+    # by pointing CompilationDatabase at the workspace directory.
+    cc_src = workspace / "pymake" / "compile_commands.json"
+    cc_link = workspace / "compile_commands.json"
+    if cc_src.exists():
+        _replace_symlink(cc_link, cc_src)
+
     print("[pytest-qemu-pic32mk] Build OK (workspace).\n", flush=True)
 
 
@@ -207,10 +200,11 @@ def _build_workspace(config: Pic32mkConfig, rootdir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def build_firmware(config: Pic32mkConfig, rootdir: Path) -> None:
-    """Compile the firmware for the current project.
+    """Compile the firmware for the current project using workspace mode.
 
-    Dispatches to *workspace mode* when ``config.project_src_dir`` is set,
-    otherwise falls back to the custom ``build_cmd`` / ``build_workspace`` mode.
+    Requires ``config.project_src_dir`` to be set.  The plugin creates an
+    isolated build workspace, symlinks the firmware sources as ``TARGET/``,
+    injects the bundled ``wrapper/``, and drives ``pymaketool`` + ``make``.
 
     Args:
         config:   Active :class:`Pic32mkConfig`.
@@ -223,81 +217,12 @@ def build_firmware(config: Pic32mkConfig, rootdir: Path) -> None:
     if not config.build:
         return
 
-    # ---- workspace mode ----
-    if config.project_src_dir is not None:
-        _build_workspace(config, rootdir)
-        return
-
-    # ---- custom build mode ----
-    # build_workspace is the directory containing Makefile.py / Makefile.
-    # Relative paths are resolved from the pytest rootdir.
-    if config.build_workspace is not None:
-        build_dir = Path(str(config.build_workspace))
-        if not build_dir.is_absolute():
-            build_dir = rootdir / build_dir
-    else:
-        build_dir = rootdir
-    build_dir = build_dir.resolve()
-
-    if not build_dir.is_dir():
+    if config.project_src_dir is None:
         pytest.fail(
-            f"[pytest-qemu-pic32mk] build_workspace not found: {build_dir}\n"
-            "Set Pic32mkConfig(build_workspace=...) to the directory containing "
-            "your Makefile.py / Makefile."
+            "[pytest-qemu-pic32mk] Pic32mkConfig.project_src_dir is required.\n"
+            "Set it to the firmware source root to enable workspace mode.\n"
+            "Example: Pic32mkConfig(project_src_dir=Path(__file__).parent.parent)"
         )
 
-    env = os.environ.copy()
-    env.update(config.build_env)
-
-    # If the project has a Makefile.py (at root or in pymake/) but
-    # pymake/makefile.mk has not been generated yet, run pymaketool first.
-    # This prevents the common "make: pymake/makefile.mk: No such file or
-    # directory" error that occurs when make is invoked before pymaketool.
-    makefile_mk = build_dir / "pymake" / "makefile.mk"
-    makefile_py_root = build_dir / "Makefile.py"
-    makefile_py_pymake = build_dir / "pymake" / "Makefile.py"
-    has_makefile_py = makefile_py_root.exists() or makefile_py_pymake.exists()
-
-    if has_makefile_py and not makefile_mk.exists():
-        pymaketool_bin = shutil.which("pymaketool") or "pymaketool"
-        print(
-            f"\n[pytest-qemu-pic32mk] Generating pymake/makefile.mk via pymaketool"
-            f"  (cwd={build_dir})",
-            flush=True,
-        )
-        result = subprocess.run(
-            [pymaketool_bin, "all"],
-            cwd=str(build_dir),
-            env=env,
-        )
-        if result.returncode != 0:
-            pytest.fail(
-                f"[pytest-qemu-pic32mk] pymaketool failed (exit {result.returncode}).\n"
-                f"Directory: {build_dir}\n"
-                "Fix the Makefile.py errors above and re-run pytest."
-            )
-
-    print(
-        f"\n[pytest-qemu-pic32mk] Building firmware for QEMU: {config.build_cmd!r}"
-        f"  (cwd={build_dir})",
-        flush=True,
-    )
-
-    result = subprocess.run(
-        config.build_cmd,
-        shell=True,
-        cwd=str(build_dir),
-        env=env,
-    )
-
-    if result.returncode != 0:
-        pytest.fail(
-            f"[pytest-qemu-pic32mk] Firmware build failed "
-            f"(exit {result.returncode}).\n"
-            f"Command: {config.build_cmd}\n"
-            f"Directory: {build_dir}\n"
-            "Fix the compilation errors above and re-run pytest."
-        )
-
-    print("[pytest-qemu-pic32mk] Build OK.\n", flush=True)
+    _build_workspace(config, rootdir)
 

@@ -22,6 +22,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+VCANInterfacesSpec = list[str | None] | dict[int, str]
+"""CAN interface mapping for :attr:`Pic32mkConfig.vcan_interfaces`.
+
+List form (sequential from CAN1)::
+
+    ["vcan_pwr_mgmt", "vcan_dashboard"]   # CAN1→vcan_pwr_mgmt, CAN2→vcan_dashboard
+
+Dict form (explicit 1-indexed firmware CANFD port numbers)::
+
+    {3: "vcan_pwr_mgmt"}   # CAN3→vcan_pwr_mgmt (canbus2 in QEMU)
+"""
+
 
 @dataclass
 class Pic32mkConfig:
@@ -40,8 +52,29 @@ class Pic32mkConfig:
         qmp_sock_isolated:      UNIX socket path for QMP on isolated instances.
         bms_uart_sock:          UNIX socket path for UART1 (BMS) on session instance.
         bms_uart_sock_isolated: UNIX socket path for UART1 on isolated instances.
-        vcan_interfaces:        List of SocketCAN virtual interface names to
-                                create/bring-up before launching QEMU.
+        vcan_interfaces:        SocketCAN virtual interfaces to create/bring-up
+                                and wire to QEMU CAN bus objects.
+
+                                **List form** — sequential from CAN1::
+
+                                    ["vcan_pwr_mgmt", "vcan_dashboard"]
+                                    # CAN1→vcan_pwr_mgmt (canbus0)
+                                    # CAN2→vcan_dashboard (canbus1)
+
+                                Use ``None`` to skip a port::
+
+                                    [None, None, "vcan_pwr_mgmt"]
+                                    # CAN3→vcan_pwr_mgmt (canbus2)
+
+                                **Dict form** — explicit 1-indexed CANFD port numbers
+                                (matches firmware ``BOOT_CAN_PORT`` defines)::
+
+                                    {3: "vcan_pwr_mgmt"}
+                                    # CAN3→vcan_pwr_mgmt (canbus2)
+
+                                No need to add ``extra_qemu_args`` for CAN wiring;
+                                this field handles both kernel interface setup and
+                                QEMU ``-object can-bus`` / ``can-host-socketcan`` args.
         extra_qemu_args:        Additional raw arguments appended to the QEMU
                                 command line.
         release_dir:            Directory where ``*.boot.bin``, ``*.app.bin``,
@@ -103,11 +136,10 @@ class Pic32mkConfig:
     qmp_sock_isolated: str = "/tmp/qemu-qmp-isolated.sock"
     bms_uart_sock: str = "/tmp/qemu-bms-uart.sock"
     bms_uart_sock_isolated: str = "/tmp/qemu-bms-uart-isolated.sock"
-    vcan_interfaces: list[str] = field(default_factory=list)
+    vcan_interfaces: VCANInterfacesSpec = field(default_factory=list)
     extra_qemu_args: list[str] = field(default_factory=list)
     release_dir: str | Path = "Release"
     build: bool = True
-    build_cmd: str = "make"
     build_env: dict[str, str] = field(default_factory=dict)
     project_src_dir: str | Path | None = None
     project_name: str = "PIC32MK-PROJECT"

@@ -22,6 +22,18 @@ pip install -e .
 
 > **Note:** Tests require a custom `qemu-system-mipsel` build with `pic32mk` machine support. They will not run in CI without it. Use `Pic32mkConfig(build=False)` to skip the firmware build when pre-built artifacts exist.
 
+### Consumer project debug commands (run inside the firmware project)
+
+```bash
+# One-shot: generate .vscode/launch.json + tasks.json for QEMU GDB debugging
+pytest --qemu-vscode-init
+
+# Start QEMU halted at reset, wait for VSCode/GDB to attach (Ctrl+C to stop)
+pytest --qemu-start-debug
+```
+
+After `--qemu-vscode-init`, press F5 in VSCode → "QEMU Debug — \<project\_name\>" — VSCode starts QEMU automatically via the background task and attaches `gdb-multiarch`.
+
 ## Architecture
 
 This is a **pytest plugin** (`pytest11` entry point → `pytest_qemu_pic32mk.plugin`) for functional testing of PIC32MK1024MCM100 (MIPS32r2) firmware running under QEMU emulation.
@@ -60,6 +72,7 @@ This is a **pytest plugin** (`pytest11` entry point → `pytest_qemu_pic32mk.plu
 | [bms_mock.py](src/pytest_qemu_pic32mk/bms_mock.py) | `BMSMock` — bq79606 UART emulator over Unix socket |
 | [can_bus.py](src/pytest_qemu_pic32mk/can_bus.py) | `CANHelper` / `CANResponse` — SocketCAN send/receive |
 | [build_utils.py](src/pytest_qemu_pic32mk/build_utils.py) | `extract_rw_segment`, `scan_elf`, `validate_objects_dir` |
+| [vscode.py](src/pytest_qemu_pic32mk/vscode.py) | `generate_vscode_debug_config` — writes `.vscode/launch.json` + `tasks.json` for QEMU GDB debugging |
 
 ### Bundled MIPS wrapper (`src/pytest_qemu_pic32mk/wrapper/`)
 

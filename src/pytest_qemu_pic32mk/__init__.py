@@ -2,7 +2,8 @@
 
 Public API
 ----------
-* :class:`Pic32mkConfig`    — configuration dataclass for ``pic32mk_config`` fixture
+* :class:`Pic32mkConfig`       — configuration dataclass for ``pic32mk_config`` fixture
+* :data:`VCANInterfacesSpec`   — type alias for the ``vcan_interfaces`` field
 * :class:`QEMUProcess`      — QEMU process lifecycle manager
 * :class:`QMPClient`        — low-level QMP socket client
 * :class:`GPIOHelper`       — GPIO / ADC read-write helper
@@ -27,7 +28,7 @@ Fixtures auto-loaded by pytest (do not import explicitly):
 
 from pathlib import Path
 
-from .config import Pic32mkConfig
+from .config import Pic32mkConfig, VCANInterfacesSpec
 from .qemu import QEMUProcess
 from .gpio_tool import QMPClient, gpio_path, ADC_QOM_PATH
 from .gpio import GPIOHelper, PinState, Pin
@@ -37,6 +38,7 @@ from .can_bus import CANHelper, CANResponse
 from .build import build_firmware
 from .build_utils import extract_rw_segment, scan_elf, validate_objects_dir
 from .plugin import QEMUBundle
+from .vscode import generate_vscode_debug_config
 
 
 def get_wrapper_dir() -> Path:
@@ -55,6 +57,7 @@ def get_wrapper_dir() -> Path:
 __all__ = [
     # Config
     "Pic32mkConfig",
+    "VCANInterfacesSpec",
     # QEMU process
     "QEMUProcess",
     # QMP client
@@ -82,4 +85,6 @@ __all__ = [
     # Wrapper path
     "get_wrapper_dir",
     "QEMUBundle",
+    # VSCode debug config generator
+    "generate_vscode_debug_config",
 ]
