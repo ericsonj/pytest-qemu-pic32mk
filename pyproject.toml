@@ -1,6 +1,6 @@
 [project]
 name = "pytest-qemu-pic32mk"
-version = "0.1.0"
+version = "0.1.1"
 description = "pytest plugin for QEMU-based functional tests targeting PIC32MK (MIPS32) firmware"
 authors = [
     {name = "Ericson Joseph",email = "ericsonjoseph@gmail.com"}
