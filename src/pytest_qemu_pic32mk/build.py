@@ -107,28 +107,48 @@ def _setup_workspace(config: Pic32mkConfig, rootdir: Path) -> Path:
     # wrapper/ → bundled MIPS wrapper inside this package
     bundled_wrapper = Path(__file__).parent / "wrapper"
 
-    if config.startup_dir is None:
+    needs_hybrid = config.startup_dir or config.stubs_dir or config.xc32_dir
+    if not needs_hybrid:
         # Default: single symlink to the entire bundled wrapper.
         _replace_symlink(workspace / "wrapper", bundled_wrapper)
     else:
-        # Custom startup: wrapper/ is a real directory; startup/ is redirected
-        # to the caller-supplied directory while everything else stays bundled.
-        custom_startup = Path(str(config.startup_dir)).resolve()
-        if not custom_startup.is_dir():
-            pytest.fail(
-                f"[pytest-qemu-pic32mk] startup_dir not found: {custom_startup}\n"
-                "Set Pic32mkConfig(startup_dir=...) to a directory containing "
-                "crt0.S, irq_dispatch.S, and mk.py."
-            )
+        # One or more sub-directories are overridden; wrapper/ becomes a real
+        # directory with per-subdirectory symlinks so unoverridden parts stay bundled.
+        def _resolved_dir(override: "str | Path | None", name: str, hint: str) -> Path:
+            if override is None:
+                return bundled_wrapper / name
+            p = Path(str(override)).resolve()
+            if not p.is_dir():
+                pytest.fail(
+                    f"[pytest-qemu-pic32mk] {name}_dir not found: {p}\n{hint}"
+                )
+            return p
+
+        startup_src = _resolved_dir(
+            config.startup_dir, "startup",
+            "Set Pic32mkConfig(startup_dir=...) to a directory containing "
+            "crt0.S, irq_dispatch.S, and mk.py.",
+        )
+        stubs_src = _resolved_dir(
+            config.stubs_dir, "stubs",
+            "Set Pic32mkConfig(stubs_dir=...) to a directory containing "
+            "the replacement stubs headers and sources.",
+        )
+        xc32_src = _resolved_dir(
+            config.xc32_dir, "xc32",
+            "Set Pic32mkConfig(xc32_dir=...) to a directory containing "
+            "the replacement xc32/xc.h compatibility headers.",
+        )
+
         wrapper_dir = workspace / "wrapper"
         # Remove any previous single-symlink before creating a real directory.
         if wrapper_dir.is_symlink():
             wrapper_dir.unlink()
         wrapper_dir.mkdir(exist_ok=True)
         _replace_symlink(wrapper_dir / "__init__.py", bundled_wrapper / "__init__.py")
-        _replace_symlink(wrapper_dir / "startup", custom_startup)
-        _replace_symlink(wrapper_dir / "stubs", bundled_wrapper / "stubs")
-        _replace_symlink(wrapper_dir / "xc32", bundled_wrapper / "xc32")
+        _replace_symlink(wrapper_dir / "startup", startup_src)
+        _replace_symlink(wrapper_dir / "stubs", stubs_src)
+        _replace_symlink(wrapper_dir / "xc32", xc32_src)
 
     return workspace
 

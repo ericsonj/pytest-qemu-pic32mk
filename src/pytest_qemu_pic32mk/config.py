@@ -127,6 +127,20 @@ class Pic32mkConfig:
                                 Only valid in workspace mode (i.e. when
                                 ``project_src_dir`` is set).  Defaults to
                                 ``None`` (use the bundled startup).
+        stubs_dir:              Path to a custom stubs directory that replaces
+                                the bundled ``wrapper/stubs/``.  Must provide
+                                the same headers and sources (``libc_stubs.c``,
+                                ``freertos_overrides.c``, ``stdlib.h``,
+                                ``stdio.h``, ``sys/``, ``gnu/``, and ``mk.py``).
+                                Only valid in workspace mode (i.e. when
+                                ``project_src_dir`` is set).  Defaults to
+                                ``None`` (use the bundled stubs).
+        xc32_dir:               Path to a custom xc32 directory that replaces
+                                the bundled ``wrapper/xc32/``.  Must provide
+                                ``xc.h`` (CP0 macros and MIPS intrinsics) and
+                                ``mk.py``.  Only valid in workspace mode (i.e.
+                                when ``project_src_dir`` is set).  Defaults to
+                                ``None`` (use the bundled xc32 headers).
     """
 
     qemu_bin: str = "qemu-system-mipsel"
@@ -146,3 +160,5 @@ class Pic32mkConfig:
     linker_script: str = "firmware/src/config/default/p32MK1024MCM100.ld"
     build_workspace: str | Path | None = None
     startup_dir: str | Path | None = None
+    stubs_dir: str | Path | None = None
+    xc32_dir: str | Path | None = None
